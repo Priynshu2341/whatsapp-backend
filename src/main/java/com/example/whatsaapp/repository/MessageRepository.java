@@ -2,6 +2,7 @@ package com.example.whatsaapp.repository;
 
 import com.example.whatsaapp.entity.Message;
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -15,7 +16,7 @@ import java.util.Set;
 @Repository
 public interface MessageRepository extends JpaRepository<Message,Long> {
 
-    List<Message> findTop20ByChatIdOrderByCreatedAtDesc(Long chatId);
+    List<Message> findTop20ByChat_ChatIdOrderByCreatedAtDescMessageIdDesc(Long chatId);
 
     @Query("""
         SELECT m FROM Message m
@@ -24,17 +25,18 @@ public interface MessageRepository extends JpaRepository<Message,Long> {
            m.createdAt < :createdAt
            OR (m.createdAt = :createdAt AND m.messageId < :id)
         )
-          ORDER BY m.createdAt DESC, m.id DESC
+          ORDER BY m.createdAt DESC, m.messageId DESC
    """)
     List<Message> findNextMessages(@Param("chatId")  Long chatId,
                                    @Param("createdAt")LocalDateTime createdAt,
-                                   @Param("id") Long id);
+                                   @Param("id") Long id,
+                                   Pageable pageable);
 
     @Query("""
         SELECT COUNT(m)
         FROM Message m
         WHERE m.chat.chatId = :chatId
-        AND m.createdAt > :lastReadAt
+        AND (:lastReadAt IS NULL OR m.createdAt > :lastReadAt)
         AND m.sender.userId != :userId
    """)
     long countUnreadMessages(@Param("lastReadAt") LocalDateTime lastReadAt,
@@ -59,7 +61,7 @@ public interface MessageRepository extends JpaRepository<Message,Long> {
 
 
     @Query("""
-        SELECT m FROM Message m
+        SELECT m.messageId FROM Message m
         WHERE m.messageStatus = 'SENT'
         AND m.sender.userId != :userId
         AND m.chat.chatId IN (
@@ -77,7 +79,7 @@ public interface MessageRepository extends JpaRepository<Message,Long> {
         OR m.messageStatus = null
         AND m.chat.chatId IN (
             SELECT cu.chat.chatId FROM ChatUser cu
-            WHERE cu.chat.userId = :userId
+            WHERE cu.user.userId = :userId
             )
 
 """)
@@ -94,6 +96,8 @@ public interface MessageRepository extends JpaRepository<Message,Long> {
                                               @Param("chatId") Long chatId);
 
 
+    @Modifying
+    @Transactional
     @Query("""
         UPDATE Message m
         SET m.messageStatus = 'SEEN'
@@ -107,7 +111,7 @@ public interface MessageRepository extends JpaRepository<Message,Long> {
     @Query("""
             SELECT DISTINCT m.sender.userId
             FROM Message m
-            WHERE m.chat.id = :chatId
+            WHERE m.chat.chatId = :chatId
             AND m.sender.userId != :userId
             AND m.messageStatus = 'DELIVERED'
             """)
